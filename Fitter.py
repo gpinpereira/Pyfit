@@ -15,7 +15,13 @@ class Helper(object):
         xh_R, yh_R = xh.ravel(), yh.ravel()
         filt_index = np.where(zh_R <= (zh_R.max()-zh_R.min())*noise_factor) #0.18
         zh_R[filt_index[0]] = 0.0
-        return xh_R, yh_R, zh_R, guess_x0, guess_y0, guess_amp 
+        return xh_R, yh_R, zh_R, guess_x0, guess_y0, guess_amp
+
+class Result(object):
+    def __init__(self,dict):
+        for varname in dict:
+            setattr(self, varname, dict[varname])
+
 class Functions(object):
 
     def __init__(self) -> None:
@@ -64,16 +70,16 @@ class Fitter(object):
 
     def fit(self, x, y, p0=None):
         if self.fittype == "gaussian":
-            self.params, self.err = self.fitGauss(x,y,p0)
+            self.fitGauss(x,y,p0)
         
         elif self.fittype == "gaussian2d":
-            self.params, self.err = self.fitGauss2D(x,y,p0)
+            self.fitGauss2D(x,y,p0)
 
         elif self.fittype == "linear":
-            self.params, self.err = self.fitLin(x,y)
+            self.fitLin(x,y)
 
         elif self.fittype == "expo":
-            self.params, self.err = self.fitLin(x,y) 
+            self.fitLin(x,y) 
 
     def getParams(self):
         return self.params
@@ -91,7 +97,10 @@ class Fitter(object):
         vars = []
         for i  in range(len(cov)):
             vars.append(cov[i][i])
-        return par, vars
+
+        pars_dict = {"mean":par[0],"sigma":par[1], "amp":par[2]} 
+        self.params = Result(pars_dict)
+        self.err = vars
 
     def fitGauss2D(self, x, y, p0=None):
         ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Helper.make_histogram(x,y,bins=400)
@@ -106,7 +115,10 @@ class Fitter(object):
         vars = []
         for i  in range(len(cov)):
             vars.append(cov[i][i])
-        return par, vars
+
+        pars_dict = {"x0":par[0],"y0":par[1], "sigma_x":par[2], "sigma_y":par[3], "amp":par[4], "theta":par[5]} 
+        self.params = Result(pars_dict)
+        self.err = vars
 
     def fitLin(self,x,y):
         y0, y1 = np.min(y), np.max(y)
@@ -118,7 +130,10 @@ class Fitter(object):
         vars = []
         for i  in range(len(cov)):
             vars.append(cov[i][i])
-        return par, vars
+
+        pars_dict = {"m":par[0],"b":par[1]} 
+        self.params = Result(pars_dict)
+        self.err = vars
 
     def fitExpo(self, x, y):
 
@@ -135,4 +150,9 @@ class Fitter(object):
         vars = []
         for i  in range(len(cov)):
             vars.append(cov[i][i])
-        return par, vars
+
+        pars_dict = {"p0":par[0],"p1":par[1]} 
+        self.params = Result(pars_dict)
+        self.err = vars
+        
+
