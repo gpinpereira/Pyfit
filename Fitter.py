@@ -78,10 +78,14 @@ class Fitter(object):
             self.func = Functions.gaussian_2d
         elif fittype == "expo":
             self.func = Functions.expo
+        elif fittype == "poly":
+            self.func = Functions.lin
         self.ident = ",".join(self.func.__code__.co_varnames[:self.func.__code__.co_argcount])
         self.func_out = self.func
 
     def fit(self, x, y, p0=None):
+        x, y = np.array(x), np.array(y)
+
         if self.fittype == "gaussian":
             self.fitGauss(x,y,p0)
         
@@ -89,10 +93,13 @@ class Fitter(object):
             self.fitGauss2D(x,y,p0)
 
         elif self.fittype == "linear":
-            self.fitLin(x,y)
+            self.fitLin(x,y,p0)
 
         elif self.fittype == "expo":
-            self.fitExpo(x,y) 
+            self.fitExpo(x,y,p0) 
+
+        elif self.fittype == "poly":
+            self.fitPoly(x,y,p0) 
 
     def getParams(self):
         return self.params
@@ -113,13 +120,14 @@ class Fitter(object):
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
             if p0==None: p0=1
             step = int(len(x)//p0)
+            nps = p0
             p0 = []
-            for s in range(0,len(x), step):
-                xg = x[s:s+step]
-                yg = y[s:s+step]
+            for s in range(0,nps):
+                xg = x[s*step:s*step+step]
+                yg = y[s*step:s*step+step]
                 p0 += [np.max(yg),np.average(xg),np.std(xg)]
-                
-        par, cov = curve_fit(ngaussianfit, x, y, p0=p0,maxfev =20000)
+            print("Estimating p0 :", p0)
+        par, cov = curve_fit(ngaussianfit, x, y, p0=p0,maxfev =50000)
         vars = []
         for i  in range(len(cov)):
             vars.append(cov[i][i])
@@ -175,13 +183,15 @@ class Fitter(object):
         self.par = par
         self.func_out = ngaussian2d
 
-    def fitLin(self,x,y):
-        y0, y1 = np.min(y), np.max(y)
-        x0, x1 = x[y==y0], x[y==y1]
-        m0 = (y1-y0)/(x1-x0)
-        b0 = y0-m0*x0
-
-        par, cov = curve_fit(self.func, x, y, p0=(m0,b0), maxfev = 2000, xtol=1e-10)
+    def fitLin(self,x,y,p0=None):
+        
+        if p0 == None:
+            y0, y1 = np.min(y), np.max(y)
+            x0, x1 = x[y==y0], x[y==y1]
+            m0 = (y1-y0)/(x1-x0)
+            b0 = y0-m0*x0
+            p0 = (m0,b0)
+        par, cov = curve_fit(self.func, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
         vars = []
         for i  in range(len(cov)):
             vars.append(cov[i][i])
@@ -191,18 +201,19 @@ class Fitter(object):
         self.err = vars
         self.par = par
 
-    def fitExpo(self, x, y):
+    def fitExpo(self, x, y, p0=None):
 
         def makeExpoParam(x1,y1,x2,y2):
             p1 = (np.log(y1)-np.log(y2))/(x1-x2)
             p0 = np.log(y2)-p1*x2
             return p0, p1
-
-        t = (y>0)
-        y0, y1 = np.min(np.array(y)[t]), np.max(np.array(y)[t])
-        x0, x1 = x[y==y0], x[y==y1]
-        p0,p1 = makeExpoParam(x0,y0,x1,y1)
-        par, cov = curve_fit(self.func, x, y, p0=(p0, p1), maxfev = 2000, xtol=1e-10)
+        if p0 == None:
+            t = (y>0)
+            y0, y1 = np.min(np.array(y)[t]), np.max(np.array(y)[t])
+            x0, x1 = x[y==y0], x[y==y1]
+            p2,p1 = makeExpoParam(x0,y0,x1,y1)
+            p0 = [p2, p1]
+        par, cov = curve_fit(self.func, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
 
         vars = []
         for i  in range(len(cov)):
@@ -213,7 +224,7 @@ class Fitter(object):
         self.err = vars
         self.par = par
 
-    def fitPoly(self, x, y,p0):
+    def fitPoly(self, x, y,p0=None):
         
         def multipoly(x, *params):
             z = np.zeros_like(x)
@@ -221,20 +232,46 @@ class Fitter(object):
                 z += params[i]*x**((len(params)-1)-i)
             return z 
 
+        if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
+            if p0==None: p0=1
 
+            print("p0 ", p0)
+            step = int(len(x)//p0)
+            nps = p0
+            print(step)
+            p0 = []
+            for s in range(nps):
 
-        par, cov = curve_fit(self.func, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
+                xg = x[s*step:s*step+step]
+                yg = y[s*step:s*step+step]
+                m = (np.max(yg)-np.min(yg))/(xg[yg==np.max(yg)][0]-xg[yg==np.min(yg)][0])
+                p0 += [m]
 
-        string.ascii_lowercase
+            print("Estimate p0, ", p0)
+        par, cov = curve_fit(multipoly, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
+
+        pnames = string.ascii_lowercase
+
+        vars = []
+        for i  in range(len(cov)):
+            vars.append(cov[i][i])
 
         pars_dict = {}
-        for i in range(0, len(p0),6):
-            pars_dict["x0_"+str(int(i/6))] = par[i] 
+        for i in range(0, len(p0)):
+            pars_dict[pnames[i]] = par[i] 
+        
+        self.params = Result(pars_dict)
+        self.err = vars
+        self.par = par
+        self.func_out = multipoly
 
     def evaluate(self, xx,yy=None):
+        
         try:
+            xx = np.array(xx)
             return self.func_out(xx,*self.par)
         except Exception:
+            xx, yy = np.array(xx),np.array(yy) 
             return self.func_out(xx, yy,*self.par)
         except TypeError:
             print("Invalid input for function")
