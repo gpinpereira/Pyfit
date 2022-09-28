@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import curve_fit
+import string
 
 class Helper(object):
     def __init__(self) -> None:
@@ -108,6 +109,16 @@ class Fitter(object):
             for i in range(0, len(params), 3):
                 y += self.func(x, params[i], params[i+1], params[i+2])
             return y
+
+        if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
+            if p0==None: p0=1
+            step = int(len(x)//p0)
+            p0 = []
+            for s in range(0,len(x), step):
+                xg = x[s:s+step]
+                yg = y[s:s+step]
+                p0 += [np.max(yg),np.average(xg),np.std(xg)]
+                
         par, cov = curve_fit(ngaussianfit, x, y, p0=p0,maxfev =20000)
         vars = []
         for i  in range(len(cov)):
@@ -129,19 +140,35 @@ class Fitter(object):
 
     def fitGauss2D(self, x, y, p0=None):
         ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Helper.make_histogram(x,y,bins=400)
-
         def ngaussian2d(xy,*params): #x0, y0, sigma_x, sigma_y, amp, theta
-            z = np.zeros_like(xy)
+            z = np.zeros_like(xy[0])
             for i in range(0, len(params), 6):
-                z += self.func(x, params[i], params[i+1], params[i+2])
+                z += self.func(xy, *params[i:i+6])
             return z
 
-        par, cov = curve_fit(ngaussian2d, xdata=(ah_R,bh_R),ydata=zh_R, p0=p0, maxfev = 2000, xtol=1e-10)
+        if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
+            #print(x.shape)
+            if p0==None: p0=1
+            step = int(len(x)//p0)
+            p0 = []
+            for s in range(0,len(x), step):
+                xg = x[s:s+step]
+                yg = y[s:s+step]
+                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), guess_amp, 0]
+
+        par, cov = curve_fit(ngaussian2d, xdata=(ah_R,bh_R), ydata=zh_R, p0=p0, maxfev = 2000, xtol=1e-10)
         vars = []
         for i  in range(len(cov)):
             vars.append(cov[i][i])
 
-        pars_dict = {"x0":par[0],"y0":par[1], "sigma_x":par[2], "sigma_y":par[3], "amp":par[4], "theta":par[5]} 
+        pars_dict = {}
+        for i in range(0, len(p0),6):
+            pars_dict["x0_"+str(int(i/6))] = par[i] 
+            pars_dict["y0_"+str(int(i/6))] = par[i+1] 
+            pars_dict["sigma_x_"+str(int(i/6))] = par[i+2] 
+            pars_dict["sigma_y_"+str(int(i/6))] = par[i+3] 
+            pars_dict["amp_"+str(int(i/6))] = par[i+4] 
+            pars_dict["theta_"+str(int(i/6))] = par[i+5] 
 
         self.params = Result(pars_dict)
         self.err = vars
@@ -175,20 +202,8 @@ class Fitter(object):
         y0, y1 = np.min(np.array(y)[t]), np.max(np.array(y)[t])
         x0, x1 = x[y==y0], x[y==y1]
         p0,p1 = makeExpoParam(x0,y0,x1,y1)
-        print(p0, p1)
-
-        #H, xedges,yedges = np.histogram2d(y,x,bins=(200,200))
-        #print(H)
-        #print(xedges.ravel())
-        #print(yedges)
-
-        print(self.func)
         par, cov = curve_fit(self.func, x, y, p0=(p0, p1), maxfev = 2000, xtol=1e-10)
-        #ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Helper.make_histogram(x,y,bins=200, noise_factor=0.4)
 
-        #print(bh_R)
-        #print(ah_R)
-        #par, cov = curve_fit(self.func, ah_R, bh_R, sigma=zh_R, p0=(p0, p1), maxfev = 20000, xtol=1e-10)
         vars = []
         for i  in range(len(cov)):
             vars.append(cov[i][i])
@@ -197,6 +212,18 @@ class Fitter(object):
         self.params = Result(pars_dict)
         self.err = vars
         self.par = par
+
+    def fitPoly(self, x, y,p0):
+        
+        def multipoly(x, *params):
+            z = np.zeros_like(x)
+            for i in range(0, len(params)):
+                z += params[i]*x**((len(params)-1)-i)
+            return z 
+
+
+
+        par, cov = curve_fit(self.func, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
 
     def evaluate(self, xx,yy=None):
         try:
