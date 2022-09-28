@@ -225,6 +225,12 @@ class Fitter(object):
 
         par, cov = curve_fit(self.func, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
 
+        string.ascii_lowercase
+
+        pars_dict = {}
+        for i in range(0, len(p0),6):
+            pars_dict["x0_"+str(int(i/6))] = par[i] 
+
     def evaluate(self, xx,yy=None):
         try:
             return self.func_out(xx,*self.par)
