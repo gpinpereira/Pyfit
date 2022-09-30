@@ -28,16 +28,17 @@ class Helper(object):
         return p0, p1
 
     @staticmethod
-    def profile(x,y=None):
-        bins=10
-        if y == None:
+    def profile(x,y=None, bins=100):
+        y = np.array(y)
+        if y.all() == None:
             yrr = stats.binned_statistic(range(len(x)), x, 'std', bins=bins).statistic
             y, edge = np.histogram(x, density=False,bins=bins)
-
-            print("-------------")
-            print(y, edge)
             x = (edge[:-1]+edge[1:])*0.5   
-    
+        else:
+            yrr = stats.binned_statistic(x, y, 'std', bins=bins).statistic
+            y, edge, _ = stats.binned_statistic(x, y, 'mean', bins=bins)
+            x = (edge[:-1]+edge[1:])*0.5  
+
         return x,y,yrr
 
 class Result(object):
@@ -85,12 +86,14 @@ class Functions(object):
 
 class Fitter(object):
 
-    def __init__(self, fittype, binned=True, *args):
+    def __init__(self, fittype, *args):
         
         self.func = None
         self.params = None
         self.err = None
         self.par = None
+        self.chi2 = None
+        self.dof = None
         self.fittype = fittype
         if fittype == "linear":
             self.func = Functions.lin
@@ -104,24 +107,32 @@ class Fitter(object):
             self.func = Functions.lin
         self.ident = ",".join(self.func.__code__.co_varnames[:self.func.__code__.co_argcount])
         self.func_out = self.func
-        self.binned = binned
+        self.binned = False
         self.profx = None
         self.profy = None
         self.profyrr = None
-    def fit(self, x, y=None, p0=None):
+
+
+    def fitBinned(self, x, y=None, p0=None, bins=100, n=1):
+
+        x,y,yrr = Helper.profile(x,y,bins=bins)
+        self.profx, self.profy, self.profyrr = x,y,yrr
+        self.fit(x,y,yrr,p0,n)
+
+    def fit(self, x, y=None, yerr=None, p0=None,n=1):
         x, y = np.array(x), np.array(y)
 
         if self.fittype == "gaussian":
-            self.fitGauss(x,y,p0)
+            self.fitGauss(x,y,yerr,p0,n)
         
         elif self.fittype == "gaussian2d":
-            self.fitGauss2D(x,y,p0)
+            self.fitGauss2D(x,y,p0,n)
 
         elif self.fittype == "linear":
-            self.fitLin(x,y,p0)
+            self.fitLin(x,y,yerr,p0)
 
         elif self.fittype == "expo":
-            self.fitExpo(x,y,p0) 
+            self.fitExpo(x,y,yerr,p0) 
 
         elif self.fittype == "poly":
             self.fitPoly(x,y,p0) 
@@ -135,30 +146,25 @@ class Fitter(object):
     def function(self):
         return self.func_out
 
-    def fitGauss(self, x, y=None, p0=None):
+    def fitGauss(self, x, y=None, yerr=None, p0=None,n=1):
+
         def ngaussianfit(x, *params): #amp_l, mean_l, sigma_l
             y = np.zeros_like(x)
             for i in range(0, len(params), 3):
                 y += self.func(x, params[i], params[i+1], params[i+2])
             return y
 
-        yrr=0.1
-        if self.binned:
-            x,y,yrr = Helper.profile(x)
-            self.profx, self.profy, self.profyrr = x,y,yrr
-
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
             if p0==None: p0=1
-            step = int(len(x)//p0)
-            nps = p0
+            step = int(len(x)//n)
+            nps = n
             p0 = []
             for s in range(0,nps):
                 xg = x[s*step:s*step+step]
                 yg = y[s*step:s*step+step]
                 p0 += [np.max(yg),np.average(xg),np.std(xg)]
-            print("Estimating p0 :", p0)
-        
-        par, cov = self.fitter(ngaussianfit,x, y, yrr, p0=p0)
+
+        par, cov = self.fitter(ngaussianfit,x, y, yerr, p0=p0)
 
         pars_dict = {}
         if len(par)<=3:
@@ -172,8 +178,11 @@ class Fitter(object):
         self.params = Result(pars_dict)
         self.func_out = ngaussianfit
 
-    def fitGauss2D(self, x, y, p0=None):
-        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Helper.make_histogram(x,y,bins=400)
+    def fitGauss2D(self, x, y, p0=None, n=1):
+        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Helper.make_histogram(x,y,bins=100)
+        yrr = stats.binned_statistic(x, y, 'std', bins=400).statistic
+        print(yrr.shape)
+        print(ah_R.shape)
         def ngaussian2d(xy,*params): #x0, y0, sigma_x, sigma_y, amp, theta
             z = np.zeros_like(xy[0])
             for i in range(0, len(params), 6):
@@ -181,13 +190,13 @@ class Fitter(object):
             return z
 
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
-            #print(x.shape)
             if p0==None: p0=1
-            step = int(len(x)//p0)
+            step = int(len(x)//n)
+            nps = n
             p0 = []
-            for s in range(0,len(x), step):
-                xg = x[s:s+step]
-                yg = y[s:s+step]
+            for s in range(0,nps):
+                xg = x[s*step:s*step+step]
+                yg = y[s*step:s*step+step]
                 p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), guess_amp, 0]
 
         par, cov = self.fitter(ngaussian2d,(ah_R,bh_R),zh_R,p0=p0)
@@ -204,7 +213,7 @@ class Fitter(object):
         self.params = Result(pars_dict)
         self.func_out = ngaussian2d
 
-    def fitLin(self,x,y,p0=None):
+    def fitLin(self,x,y,yerr=None,p0=None):
         
         if p0 == None:
             y0, y1 = np.min(y), np.max(y)
@@ -213,12 +222,12 @@ class Fitter(object):
             b0 = y0-m0*x0
             p0 = (m0,b0)
 
-        par, cov = self.fitter(self.func,x,y,p0=p0)
+        par, cov = self.fitter(self.func,x,y,yerr,p0=p0)
 
         pars_dict = {"m":par[0],"b":par[1]} 
         self.params = Result(pars_dict)
 
-    def fitExpo(self, x, y, p0=None):
+    def fitExpo(self, x, y, yerr=None, p0=None):
 
         if p0 == None:
             t = (y>0)
@@ -227,7 +236,7 @@ class Fitter(object):
             p2,p1 = Helper.makeExpoParam(x0,y0,x1,y1)
             p0 = [p2, p1]
 
-        par, cov = self.fitter(self.func,x,y,p0=p0)
+        par, cov = self.fitter(self.func,x,y,yerr,p0=p0)
 
         pars_dict = {"p0":par[0],"p1":par[1]} 
         self.params = Result(pars_dict)
@@ -267,22 +276,26 @@ class Fitter(object):
         self.func_out = multipoly
 
     def fitter(self,func,x,y,yerr=None,p0=None):
-        #yerr=0.1
-        print("fitter")
-        print(x,y,yerr)
+        yerr = np.array(yerr)
+        if yerr.all() == None: yerr = [1e-9]*len(x)
+
+        par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 100000, xtol=1e-4)
         ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)
-        m = Minuit(ls, *p0)
+        m = Minuit(ls, *par)
 
         m.migrad()  # finds minimum of least_squares function
         m.hesse()   # accurately computes uncertainties
-        print(m)
-        par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 100000, xtol=1e-8)
+        
+
+        names, par, cov = m.parameters, m.values, m.errors
         vars = []
         for i  in range(len(cov)):
-            vars.append(cov[i][i])
+            vars.append(cov[i])
 
         self.err = vars
         self.par = par
+        self.chi2 = m.fval
+        self.dof = len(x) - m.nfit
         return par, cov
 
     def evaluate(self, xx,yy=None):
