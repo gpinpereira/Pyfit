@@ -1,6 +1,9 @@
 import numpy as np
 from scipy.optimize import curve_fit
 import string
+from scipy import stats
+from iminuit import Minuit
+from iminuit.cost import LeastSquares
 
 class Helper(object):
     def __init__(self) -> None:
@@ -17,6 +20,25 @@ class Helper(object):
         filt_index = np.where(zh_R <= (zh_R.max()-zh_R.min())*noise_factor) #0.18
         zh_R[filt_index[0]] = 0.0
         return xh_R, yh_R, zh_R, guess_x0, guess_y0, guess_amp
+    
+    @staticmethod
+    def makeExpoParam(x1,y1,x2,y2):
+        p1 = (np.log(y1)-np.log(y2))/(x1-x2)
+        p0 = np.log(y2)-p1*x2
+        return p0, p1
+
+    @staticmethod
+    def profile(x,y=None):
+        bins=10
+        if y == None:
+            yrr = stats.binned_statistic(range(len(x)), x, 'std', bins=bins).statistic
+            y, edge = np.histogram(x, density=False,bins=bins)
+
+            print("-------------")
+            print(y, edge)
+            x = (edge[:-1]+edge[1:])*0.5   
+    
+        return x,y,yrr
 
 class Result(object):
     def __init__(self,dict, identity=""):
@@ -63,7 +85,7 @@ class Functions(object):
 
 class Fitter(object):
 
-    def __init__(self, fittype, *args):
+    def __init__(self, fittype, binned=True, *args):
         
         self.func = None
         self.params = None
@@ -82,8 +104,11 @@ class Fitter(object):
             self.func = Functions.lin
         self.ident = ",".join(self.func.__code__.co_varnames[:self.func.__code__.co_argcount])
         self.func_out = self.func
-
-    def fit(self, x, y, p0=None):
+        self.binned = binned
+        self.profx = None
+        self.profy = None
+        self.profyrr = None
+    def fit(self, x, y=None, p0=None):
         x, y = np.array(x), np.array(y)
 
         if self.fittype == "gaussian":
@@ -110,12 +135,17 @@ class Fitter(object):
     def function(self):
         return self.func_out
 
-    def fitGauss(self, x, y, p0=None):
+    def fitGauss(self, x, y=None, p0=None):
         def ngaussianfit(x, *params): #amp_l, mean_l, sigma_l
             y = np.zeros_like(x)
             for i in range(0, len(params), 3):
                 y += self.func(x, params[i], params[i+1], params[i+2])
             return y
+
+        yrr=0.1
+        if self.binned:
+            x,y,yrr = Helper.profile(x)
+            self.profx, self.profy, self.profyrr = x,y,yrr
 
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
             if p0==None: p0=1
@@ -127,10 +157,8 @@ class Fitter(object):
                 yg = y[s*step:s*step+step]
                 p0 += [np.max(yg),np.average(xg),np.std(xg)]
             print("Estimating p0 :", p0)
-        par, cov = curve_fit(ngaussianfit, x, y, p0=p0,maxfev =50000)
-        vars = []
-        for i  in range(len(cov)):
-            vars.append(cov[i][i])
+        
+        par, cov = self.fitter(ngaussianfit,x, y, yrr, p0=p0)
 
         pars_dict = {}
         if len(par)<=3:
@@ -142,8 +170,6 @@ class Fitter(object):
                 pars_dict["sigma_"+str(int(i/3))] = par[i+2] 
 
         self.params = Result(pars_dict)
-        self.err = vars
-        self.par = par
         self.func_out = ngaussianfit
 
     def fitGauss2D(self, x, y, p0=None):
@@ -164,10 +190,7 @@ class Fitter(object):
                 yg = y[s:s+step]
                 p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), guess_amp, 0]
 
-        par, cov = curve_fit(ngaussian2d, xdata=(ah_R,bh_R), ydata=zh_R, p0=p0, maxfev = 2000, xtol=1e-10)
-        vars = []
-        for i  in range(len(cov)):
-            vars.append(cov[i][i])
+        par, cov = self.fitter(ngaussian2d,(ah_R,bh_R),zh_R,p0=p0)
 
         pars_dict = {}
         for i in range(0, len(p0),6):
@@ -179,8 +202,6 @@ class Fitter(object):
             pars_dict["theta_"+str(int(i/6))] = par[i+5] 
 
         self.params = Result(pars_dict)
-        self.err = vars
-        self.par = par
         self.func_out = ngaussian2d
 
     def fitLin(self,x,y,p0=None):
@@ -191,38 +212,25 @@ class Fitter(object):
             m0 = (y1-y0)/(x1-x0)
             b0 = y0-m0*x0
             p0 = (m0,b0)
-        par, cov = curve_fit(self.func, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
-        vars = []
-        for i  in range(len(cov)):
-            vars.append(cov[i][i])
+
+        par, cov = self.fitter(self.func,x,y,p0=p0)
 
         pars_dict = {"m":par[0],"b":par[1]} 
         self.params = Result(pars_dict)
-        self.err = vars
-        self.par = par
 
     def fitExpo(self, x, y, p0=None):
 
-        def makeExpoParam(x1,y1,x2,y2):
-            p1 = (np.log(y1)-np.log(y2))/(x1-x2)
-            p0 = np.log(y2)-p1*x2
-            return p0, p1
         if p0 == None:
             t = (y>0)
             y0, y1 = np.min(np.array(y)[t]), np.max(np.array(y)[t])
             x0, x1 = x[y==y0], x[y==y1]
-            p2,p1 = makeExpoParam(x0,y0,x1,y1)
+            p2,p1 = Helper.makeExpoParam(x0,y0,x1,y1)
             p0 = [p2, p1]
-        par, cov = curve_fit(self.func, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
 
-        vars = []
-        for i  in range(len(cov)):
-            vars.append(cov[i][i])
+        par, cov = self.fitter(self.func,x,y,p0=p0)
 
         pars_dict = {"p0":par[0],"p1":par[1]} 
         self.params = Result(pars_dict)
-        self.err = vars
-        self.par = par
 
     def fitPoly(self, x, y,p0=None):
         
@@ -241,29 +249,41 @@ class Fitter(object):
             print(step)
             p0 = []
             for s in range(nps):
-
                 xg = x[s*step:s*step+step]
                 yg = y[s*step:s*step+step]
                 m = (np.max(yg)-np.min(yg))/(xg[yg==np.max(yg)][0]-xg[yg==np.min(yg)][0])
                 p0 += [m]
 
             print("Estimate p0, ", p0)
-        par, cov = curve_fit(multipoly, x, y, p0=p0, maxfev = 2000, xtol=1e-10)
+        
+        par, cov = self.fitter(multipoly,x,y,p0=p0)
 
         pnames = string.ascii_lowercase
-
-        vars = []
-        for i  in range(len(cov)):
-            vars.append(cov[i][i])
-
         pars_dict = {}
         for i in range(0, len(p0)):
             pars_dict[pnames[i]] = par[i] 
         
         self.params = Result(pars_dict)
+        self.func_out = multipoly
+
+    def fitter(self,func,x,y,yerr=None,p0=None):
+        #yerr=0.1
+        print("fitter")
+        print(x,y,yerr)
+        ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)
+        m = Minuit(ls, *p0)
+
+        m.migrad()  # finds minimum of least_squares function
+        m.hesse()   # accurately computes uncertainties
+        print(m)
+        par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 100000, xtol=1e-8)
+        vars = []
+        for i  in range(len(cov)):
+            vars.append(cov[i][i])
+
         self.err = vars
         self.par = par
-        self.func_out = multipoly
+        return par, cov
 
     def evaluate(self, xx,yy=None):
         
