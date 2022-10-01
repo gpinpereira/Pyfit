@@ -180,7 +180,7 @@ class Fitter(object):
 
     def fitGauss2D(self, x, y, p0=None, n=1):
         ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Helper.make_histogram(x,y,bins=100)
-        yrr = stats.binned_statistic(x, y, 'std', bins=400).statistic
+        
         print(yrr.shape)
         print(ah_R.shape)
         def ngaussian2d(xy,*params): #x0, y0, sigma_x, sigma_y, amp, theta
