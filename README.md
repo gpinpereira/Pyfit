@@ -11,7 +11,7 @@ Don't forget to check the Tutorial notebook.
 
 ### To extract the fit results use
 ```
-from fitpy import Fitter
+from ifitpy import Fitter
 f = Fitter("linear") #linear, expo, gaussian, gaussian2d, poly
 f.fit([0,10], [0,-10])
 p = f.getParams()
