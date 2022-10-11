@@ -5,12 +5,12 @@ from scipy import stats
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
 
-class Helper(object):
+class Utils(object):
     def __init__(self) -> None:
         pass
     @staticmethod
     def make_histogram(x,y,bins=400, noise_factor=0.0):
-        zh, edges = np.histogramdd(np.column_stack((x,y)), bins=bins, density=True)
+        zh, edges = np.histogramdd(np.column_stack((x,y)), bins=bins, density=False)
         indexes = np.where(zh == zh.max())
         guess_x0, guess_y0, guess_amp = edges[0][indexes[0]][0], edges[1][indexes[1]][0], zh.max()
         zh = zh.T
@@ -40,6 +40,26 @@ class Helper(object):
             x = (edge[:-1]+edge[1:])*0.5  
 
         return x,y,yrr
+
+    @staticmethod
+    def profile2d(x,y, bins=80):
+        
+        binx = np.arange(x.min(),x.max(),bins)
+        biny = np.arange(y.min(),y.max(),bins)
+        
+        sigma = stats.binned_statistic_2d(x, y, np.arange(len(x)), 'std', bins=bins).statistic
+        res = stats.binned_statistic_2d(x, y, np.arange(len(x)), 'count', bins=bins)
+
+        xh, yh = (res.x_edge[:-1]+res.x_edge[1:])*0.5, (res.y_edge[:-1]+res.y_edge[1:])*0.5   
+        xh, yh = np.meshgrid(xh, yh)
+        x, y = xh.ravel(), yh.ravel()
+
+        z = res.statistic.ravel()
+
+        z[np.isnan(z)] = 0
+        
+        x0,y0 = x[z==z.max()], y[z==z.max()] 
+        return x,y,z,x0,y0,z.max()
 
 class Result(object):
     def __init__(self,dict, identity=""):
@@ -115,7 +135,7 @@ class Fitter(object):
 
     def fitBinned(self, x, y=None, p0=None, bins=100, n=1):
 
-        x,y,yrr = Helper.profile(x,y,bins=bins)
+        x,y,yrr = Utils.profile(x,y,bins=bins)
         self.profx, self.profy, self.profyrr = x,y,yrr
         self.fit(x,y,yrr,p0,n)
 
@@ -156,12 +176,12 @@ class Fitter(object):
 
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
             if p0==None: p0=1
-            step = int(len(x)//n)
-            nps = n
+            xt = np.array_split(x, n)
+            yt = np.array_split(y, n)
             p0 = []
-            for s in range(0,nps):
-                xg = x[s*step:s*step+step]
-                yg = y[s*step:s*step+step]
+            for s in range(0,n):
+                xg = xt[s]
+                yg = xt[s]
                 p0 += [np.max(yg),np.average(xg),np.std(xg)]
 
         par, cov = self.fitter(ngaussianfit,x, y, yerr, p0=p0)
@@ -179,10 +199,8 @@ class Fitter(object):
         self.func_out = ngaussianfit
 
     def fitGauss2D(self, x, y, p0=None, n=1):
-        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Helper.make_histogram(x,y,bins=100)
+        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Utils.make_histogram(x,y,bins=100)
         
-        print(yrr.shape)
-        print(ah_R.shape)
         def ngaussian2d(xy,*params): #x0, y0, sigma_x, sigma_y, amp, theta
             z = np.zeros_like(xy[0])
             for i in range(0, len(params), 6):
@@ -190,16 +208,16 @@ class Fitter(object):
             return z
 
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
-            if p0==None: p0=1
-            step = int(len(x)//n)
-            nps = n
             p0 = []
-            for s in range(0,nps):
-                xg = x[s*step:s*step+step]
-                yg = y[s*step:s*step+step]
-                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), guess_amp, 0]
 
-        par, cov = self.fitter(ngaussian2d,(ah_R,bh_R),zh_R,p0=p0)
+            xt = np.array_split(x, n)
+            yt = np.array_split(y, n)
+            for s in range(0,n):
+                xg = xt[s]
+                yg = xt[s]
+                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), guess_amp, 0.1]
+
+        par, cov = self.fitter(func=ngaussian2d,x=(ah_R,bh_R),y=zh_R,p0=p0)
 
         pars_dict = {}
         for i in range(0, len(p0),6):
@@ -233,7 +251,7 @@ class Fitter(object):
             t = (y>0)
             y0, y1 = np.min(np.array(y)[t]), np.max(np.array(y)[t])
             x0, x1 = x[y==y0], x[y==y1]
-            p2,p1 = Helper.makeExpoParam(x0,y0,x1,y1)
+            p2,p1 = Utils.makeExpoParam(x0,y0,x1,y1)
             p0 = [p2, p1]
 
         par, cov = self.fitter(self.func,x,y,yerr,p0=p0)
@@ -252,18 +270,14 @@ class Fitter(object):
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
             if p0==None: p0=1
 
-            print("p0 ", p0)
             step = int(len(x)//p0)
             nps = p0
-            print(step)
             p0 = []
             for s in range(nps):
                 xg = x[s*step:s*step+step]
                 yg = y[s*step:s*step+step]
                 m = (np.max(yg)-np.min(yg))/(xg[yg==np.max(yg)][0]-xg[yg==np.min(yg)][0])
                 p0 += [m]
-
-            print("Estimate p0, ", p0)
         
         par, cov = self.fitter(multipoly,x,y,p0=p0)
 
@@ -277,7 +291,7 @@ class Fitter(object):
 
     def fitter(self,func,x,y,yerr=None,p0=None):
         yerr = np.array(yerr)
-        if yerr.all() == None: yerr = [1e-9]*len(x)
+        if yerr.all() == None: yerr = np.array([1e-9]*y.shape[0])
 
         par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 100000, xtol=1e-4)
         ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)

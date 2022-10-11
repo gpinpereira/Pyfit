@@ -10,7 +10,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setuptools.setup(
     name='ifitpy',                           # should match the package folder
     packages=['ifitpy'],                     # should match the package folder
-    version='0.0.1',                                # important for updates
+    version='0.0.2',                                # important for updates
     license='MIT',                                  # should match your chosen license
     description='Simple data fitting package',
     long_description=long_description,              # loads your README.md
@@ -21,7 +21,7 @@ setuptools.setup(
     project_urls = {                                # Optional
         "Bug Tracker": "https://https://github.com/gpinpereira/Pyfit/issues"
     },
-    install_requires=['numpy','scipy', 'string', 'iminuit'],                  # list all packages that your package uses
+    install_requires=['numpy','scipy', 'iminuit'],                  # list all packages that your package uses
     keywords=["fitting", "datascience", "iminuit"], #descriptive meta-data
     classifiers=[                                   # https://pypi.org/classifiers
         'Development Status :: 3 - Alpha',
