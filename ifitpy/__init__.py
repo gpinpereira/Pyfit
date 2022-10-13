@@ -3,5 +3,6 @@ try:
     from .Fitter import Fitter
     from .Fitter import Functions
     from .Fitter import Utils
+    print("cuker")
 except ImportError:  # pragma: no cover
     pass  # pragma: no cover
