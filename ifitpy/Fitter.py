@@ -63,13 +63,11 @@ class Utils(object):
 
 class Result(object):
     def __init__(self,dict, identity=""):
-        #self.identity = identity
         self.vars = []
         for varname in dict:
             setattr(self, varname, dict[varname])
             self.vars.append(dict[varname])
     def __str__(self):
-        #out = "identity: "+str(self.__dict__["identity"])
         out= ", ".join([key + ": "+ str(self.__dict__[key]) for key in self.__dict__.keys()])
         return out
     def r(self):
@@ -181,7 +179,7 @@ class Fitter(object):
             p0 = []
             for s in range(0,n):
                 xg = xt[s]
-                yg = xt[s]
+                yg = yt[s]
                 p0 += [np.max(yg),np.average(xg),np.std(xg)]
 
         par, cov = self.fitter(ngaussianfit,x, y, yerr, p0=p0)
@@ -293,6 +291,9 @@ class Fitter(object):
         yerr = np.array(yerr)
         if yerr.all() == None: yerr = np.array([1e-9]*y.shape[0])
 
+        print(len(x), y.shape)
+        print(len(x[0]), y.shape)
+        print(len(x[1]), y.shape)
         par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 100000, xtol=1e-4)
         ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)
         m = Minuit(ls, *par)
