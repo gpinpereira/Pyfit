@@ -4,13 +4,14 @@ import string
 from scipy import stats
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
+print("!!!!!!!!!!")
 
 class Utils(object):
     def __init__(self) -> None:
         pass
     @staticmethod
     def make_histogram(x,y,bins=400, noise_factor=0.0):
-        zh, edges = np.histogramdd(np.column_stack((x,y)), bins=bins, density=False)
+        zh, edges = np.histogramdd(np.column_stack((x,y)), bins=bins, density=True)
         indexes = np.where(zh == zh.max())
         guess_x0, guess_y0, guess_amp = edges[0][indexes[0]][0], edges[1][indexes[1]][0], zh.max()
         zh = zh.T
@@ -18,7 +19,7 @@ class Utils(object):
         xh, yh = np.meshgrid(edges[0][:-1], edges[1][:-1])
         xh_R, yh_R = xh.ravel(), yh.ravel()
         filt_index = np.where(zh_R <= (zh_R.max()-zh_R.min())*noise_factor) #0.18
-        zh_R[filt_index[0]] = 0.0
+        zh_R[filt_index[0]] = 0
         return xh_R, yh_R, zh_R, guess_x0, guess_y0, guess_amp
     
     @staticmethod
@@ -42,24 +43,40 @@ class Utils(object):
         return x,y,yrr
 
     @staticmethod
-    def profile2d(x,y, bins=80):
+    def profile2d(x,y, bins=80, density=True):
         
+        typ = "mean"
+        if density:
+            typ = "count"
         binx = np.arange(x.min(),x.max(),bins)
         biny = np.arange(y.min(),y.max(),bins)
         
         sigma = stats.binned_statistic_2d(x, y, np.arange(len(x)), 'std', bins=bins).statistic
-        res = stats.binned_statistic_2d(x, y, np.arange(len(x)), 'count', bins=bins)
+        res = stats.binned_statistic_2d(x, y, np.arange(len(x)), typ, bins=bins)
 
         xh, yh = (res.x_edge[:-1]+res.x_edge[1:])*0.5, (res.y_edge[:-1]+res.y_edge[1:])*0.5   
         xh, yh = np.meshgrid(xh, yh)
         x, y = xh.ravel(), yh.ravel()
-
         z = res.statistic.ravel()
 
         z[np.isnan(z)] = 0
         
         x0,y0 = x[z==z.max()], y[z==z.max()] 
         return x,y,z,x0,y0,z.max()
+
+    @staticmethod
+    def fit_gaussian(a,b):
+        #fil_good_events = np.column_stack((a,b))
+        #zh, edges = np.histogramdd(fil_good_events, bins=400,density=True)
+        #indexes = np.where(zh == zh.max())
+        #guess_x0, guess_y0, guess_amp = edges[0][indexes[0]][0], edges[1][indexes[1]][0], zh.max()
+
+        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Utils.make_histogram(a,b,bins=200)
+        p = [guess_x0, guess_y0, 100, 30000, guess_amp,-1.e-3]
+
+        popt, pcov = curve_fit(Functions.gaussian_2d, xdata=(ah_R,bh_R),ydata=zh_R, p0=p, maxfev = 2000, xtol=1e-10)
+        return popt, pcov
+
 
 class Result(object):
     def __init__(self,dict, identity=""):
@@ -80,6 +97,7 @@ class Functions(object):
 
     @staticmethod
     def gaussian_2d(xy, x0, y0, sigma_x, sigma_y, amp, theta):
+        #print(x0, y0, sigma_x, sigma_y, amp, theta)
         x = xy[0]
         y = xy[1]
         a = (np.cos(theta)**2)/(2*sigma_x**2) + (np.sin(theta)**2)/(2*sigma_y**2)
@@ -197,23 +215,33 @@ class Fitter(object):
         self.func_out = ngaussianfit
 
     def fitGauss2D(self, x, y, p0=None, n=1):
-        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Utils.make_histogram(x,y,bins=100)
-        
+        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Utils.make_histogram(x,y,bins=400)
+
         def ngaussian2d(xy,*params): #x0, y0, sigma_x, sigma_y, amp, theta
+
+            #print("ngaussian2d")
+            #print(xy[0])
             z = np.zeros_like(xy[0])
+            #print(z)
             for i in range(0, len(params), 6):
-                z += self.func(xy, *params[i:i+6])
+                #print(len(params[i:i+6]))
+                g1 = self.func(xy, *params[i:i+6])
+                #print("g1: ", g1.shape)
+                z += g1
+            #print(z.shape)
             return z
 
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
             p0 = []
 
-            xt = np.array_split(x, n)
-            yt = np.array_split(y, n)
+            xt = np.array_split(np.linspace(x.min(),x.max(), n*10), n)
+            yt = np.array_split(np.linspace(y.min(),y.max(), n*10), n)
+
             for s in range(0,n):
-                xg = xt[s]
-                yg = xt[s]
-                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), guess_amp, 0.1]
+                tcut = (x>xt[s].min())&(x<xt[s].max())&(y>yt[s].min())&(y<yt[s].max())
+                xg = x[tcut]
+                yg = y[tcut]
+                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), guess_amp/n, 0]
 
         par, cov = self.fitter(func=ngaussian2d,x=(ah_R,bh_R),y=zh_R,p0=p0)
 
@@ -289,19 +317,16 @@ class Fitter(object):
 
     def fitter(self,func,x,y,yerr=None,p0=None):
         yerr = np.array(yerr)
-        if yerr.all() == None: yerr = np.array([1e-9]*y.shape[0])
-
-        print(len(x), y.shape)
-        print(len(x[0]), y.shape)
-        print(len(x[1]), y.shape)
-        par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 100000, xtol=1e-4)
+        if yerr.all() == None: yerr = np.array([1e-9]*y.shape[0])       
+        par, cov = curve_fit(func, x, y, p0=p0, maxfev = 100000, xtol=1e-4)
+        
+        
         ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)
         m = Minuit(ls, *par)
 
         m.migrad()  # finds minimum of least_squares function
         m.hesse()   # accurately computes uncertainties
         
-
         names, par, cov = m.parameters, m.values, m.errors
         vars = []
         for i  in range(len(cov)):
@@ -309,8 +334,8 @@ class Fitter(object):
 
         self.err = vars
         self.par = par
-        self.chi2 = m.fval
-        self.dof = len(x) - m.nfit
+        self.chi2 = 0 #m.fval
+        self.dof = 10 #len(x) - m.nfit
         return par, cov
 
     def evaluate(self, xx,yy=None):
