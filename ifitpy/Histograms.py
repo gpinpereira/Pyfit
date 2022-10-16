@@ -95,28 +95,28 @@ class Profile2D(object):
         bins = [self.binsx, self.binsy]
         ra = [[self.xmin, self.xmax], [self.ymin, self.ymax]]
 
+        if np.array(ra).any() == None: ra = None
         sigma = stats.binned_statistic_2d(x, y, np.arange(len(x)), 'std', bins=bins, range=ra).statistic
         count = stats.binned_statistic_2d(x, y, np.arange(len(x)), "count", bins=bins, range=ra).statistic
         res = stats.binned_statistic_2d(x, y, np.arange(len(x)), "mean", bins=bins, range=ra)
         
         xh, yh = (res.x_edge[:-1]+res.x_edge[1:])*0.5, (res.y_edge[:-1]+res.y_edge[1:])*0.5   
-        xh, yh = np.meshgrid(xh, yh)
-        xh, yh = xh.ravel(), yh.ravel()
 
-        z = res.statistic.ravel()
+        xh, yh = np.meshgrid(xh, yh, indexing='ij')
+        xh, yh = xh.ravel(), yh.ravel()
 
         self.profxb = xh 
         self.profyb = yh 
-        self.profy = z
-        self.profyerr = yrr
-        self.profbincount = count
+        self.profy = res.statistic.ravel()
+        self.profyerr = sigma.ravel()
+        self.profbincount = count.ravel()
 
     def getSigmas(self):
         return self.profyerr
     def getBinsX(self):
-        return self.profx
+        return self.profxb
     def getBinsY(self):
-        return self.profx
+        return self.profyb
     def getMeans(self):
         return self.profy
     def getCount(self):

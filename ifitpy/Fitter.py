@@ -4,7 +4,9 @@ import string
 from scipy import stats
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
-import ifitpy.Histograms
+import ifitpy.Histograms as ht
+from scipy.interpolate import UnivariateSpline
+
 
 class Utils(object):
     def __init__(self) -> None:
@@ -41,6 +43,26 @@ class Utils(object):
             x = (edge[:-1]+edge[1:])*0.5  
 
         return x,y,yrr
+
+    @staticmethod
+    def get_xx_of_n_max(xx, yy, n):
+        # Find roots where first derivative is zero, and second derivative is negative.
+        # Get n roots of the highest yy values 
+
+        w=5 #moving average with a window of length
+        ty=np.convolve(yy, np.ones(w), 'same') / w
+
+        y_spl = UnivariateSpline(xx,ty,s=0,k=4)
+        y_spl_1d = y_spl.derivative(n=1)
+        roots =  y_spl_1d.roots()
+
+        y_spl_2d = y_spl.derivative(n=2)
+        value_2d_at_root = y_spl_2d(roots)
+        potencial_means = roots[(value_2d_at_root<0)]
+
+        yy_roots_values = y_spl(potencial_means)
+        ind = np.argpartition(yy_roots_values, -n)[-n:]
+        return potencial_means[ind]
 
     @staticmethod
     def profile2d(x,y, bins=80, density=True):
@@ -136,10 +158,17 @@ class Fitter(object):
 
 
     def fitBinned(self, x, y=None, p0=None, bins=100, n=1):
+        x, y = np.array(x), np.array(y)
+        prof = None
+        if y.all() == None:
+            prof = ht.Histogram(bins)
+            prof.fill(x)
+        else:
+            prof = ht.Profile1D(bins)
+            prof.fill(x,y)
 
-        x,y,yrr = Utils.profile(x,y,bins=bins)
-        self.profx, self.profy, self.profyrr = x,y,yrr
-        self.fit(x,y,yrr,p0,n)
+        self.profx, self.profy, self.profyrr = prof.getBins(), prof.getMeans(), prof.getSigmas()
+        self.fit(self.profx, self.profy, self.profyrr,p0,n)
 
     def fit(self, x, y=None, yerr=None, p0=None,n=1):
         x, y = np.array(x), np.array(y)
@@ -174,19 +203,28 @@ class Fitter(object):
             y = np.zeros_like(x)
             for i in range(0, len(params), 3):
                 y += self.func(x, params[i], params[i+1], params[i+2])
-            return y
+            return y 
 
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
             if p0==None: p0=1
-            xt = np.array_split(x, n)
-            yt = np.array_split(y, n)
+
+            xt = np.array_split(x, n) # np.array_split(np.linspace(x.min(),x.max(), n*10), n)
+            yt = np.array_split(y, n) # np.array_split(np.linspace(y.min(),y.max(), n*10), n)
+
+            means = np.sort(Utils.get_xx_of_n_max(x,y,n))
             p0 = []
             for s in range(0,n):
+
                 xg = xt[s]
                 yg = yt[s]
-                p0 += [np.max(yg),np.average(xg),np.std(xg)]
+                p0 += [np.max(yg),means[s],np.std(xg)]
 
-        par, cov = self.fitter(ngaussianfit,x, y, yerr, p0=p0)
+        bounds_hi = []
+        bounds_lo = []
+        for i in range(0,n):
+            bounds_lo += [0,-np.inf,0]
+            bounds_hi += [np.inf,np.inf,np.inf]
+        par, cov = self.fitter(ngaussianfit, x, y, yerr, p0=p0,bounds=(bounds_lo, bounds_hi))
 
         pars_dict = {}
         if len(par)<=3:
@@ -201,20 +239,16 @@ class Fitter(object):
         self.func_out = ngaussianfit
 
     def fitGauss2D(self, x, y, p0=None, n=1):
-        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Utils.make_histogram(x,y,bins=400)
 
+        pf2d = ht.Profile2D(binsx=400, binsy=400)
+        ah_R, bh_R, zh_R = pf2d.getBinsX(), pf2d.getBinsY(), pf2d.getCount()
+        
         def ngaussian2d(xy,*params): #x0, y0, sigma_x, sigma_y, amp, theta
 
-            #print("ngaussian2d")
-            #print(xy[0])
             z = np.zeros_like(xy[0])
-            #print(z)
             for i in range(0, len(params), 6):
-                #print(len(params[i:i+6]))
                 g1 = self.func(xy, *params[i:i+6])
-                #print("g1: ", g1.shape)
                 z += g1
-            #print(z.shape)
             return z
 
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
@@ -301,10 +335,14 @@ class Fitter(object):
         self.params = Result(pars_dict)
         self.func_out = multipoly
 
-    def fitter(self,func,x,y,yerr=None,p0=None):
+    def fitter(self,func,x,y,yerr=None,p0=None, bounds=None):
         yerr = np.array(yerr)
-        if yerr.all() == None: yerr = np.array([1e-9]*y.shape[0])       
-        par, cov = curve_fit(func, x, y, p0=p0, maxfev = 100000, xtol=1e-4)
+        if yerr.all() == None: yerr = np.array([1e-9]*y.shape[0]) 
+
+        if bounds == None:
+            par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 20000, xtol=1e-8)
+        else:
+            par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 20000, xtol=1e-8, bounds=bounds)
         
         ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)
         m = Minuit(ls, *par)
