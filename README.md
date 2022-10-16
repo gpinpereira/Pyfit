@@ -1,5 +1,9 @@
 # Pyfit
 
+```
+pip install ifitpy
+```
+
 This fit package permits to, well, fit a given x,y data. It encapsulates both iminuit and curve_fit.
 There are two type of functions. Simple (linear, expo) and Complex(gaussian, gaussian2d, poly).
 For Simple function `fit(x,y)` are `fit(x,y,p0)` are valid inputs. In the first option the fit attempts to estimate the initial starting point. In the second option, a list of parameters (p0) is used to initialized the fit.
