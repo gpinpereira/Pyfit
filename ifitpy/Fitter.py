@@ -277,7 +277,7 @@ class Fitter(object):
                 tcut = (x>xt[s].min())&(x<xt[s].max())&(y>yt[s].min())&(y<yt[s].max())
                 xg = x[tcut]
                 yg = y[tcut]
-                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), zh_R.max()/n, 0]
+                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), zh_R.max()/n, -0.001]
 
         par, cov = self.fitter(func=ngaussian2d,x=(ah_R,bh_R),y=zh_R,p0=p0)
 
