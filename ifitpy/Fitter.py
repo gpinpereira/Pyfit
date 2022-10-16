@@ -255,6 +255,7 @@ class Fitter(object):
     def fitGauss2D(self, x, y, p0=None, n=1):
 
         pf2d = ht.Profile2D(binsx=400, binsy=400)
+        pf2d.fill(x, y)
         ah_R, bh_R, zh_R = pf2d.getBinsX(), pf2d.getBinsY(), pf2d.getCount()
         
         def ngaussian2d(xy,*params): #x0, y0, sigma_x, sigma_y, amp, theta
@@ -276,7 +277,7 @@ class Fitter(object):
                 tcut = (x>xt[s].min())&(x<xt[s].max())&(y>yt[s].min())&(y<yt[s].max())
                 xg = x[tcut]
                 yg = y[tcut]
-                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), guess_amp/n, 0]
+                p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), zh_R.max()/n, 0]
 
         par, cov = self.fitter(func=ngaussian2d,x=(ah_R,bh_R),y=zh_R,p0=p0)
 
