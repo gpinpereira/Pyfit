@@ -366,10 +366,11 @@ class Fitter(object):
         m.migrad()  # finds minimum of least_squares function
         m.hesse()   # accurately computes uncertainties
         
-        names, par, cov = m.parameters, m.values, m.errors
+        names, par, cov = m.parameters, m.values, m.covariance 
         vars = []
         for i  in range(len(cov)):
-            vars.append(cov[i])
+            #print("c ", cov[i][i])
+            vars.append(cov[i][i]**0.5)
 
         self.err = vars
         self.par = par
