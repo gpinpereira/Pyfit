@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: ifitpy
-Version: 0.0.2
+Version: 0.0.6
 Summary: Simple data fitting package
 Home-page: https://https://github.com/gpinpereira/Pyfit
 Author: Guilherme Pereira
@@ -9,6 +9,10 @@ License: MIT
 Download-URL: https://github.com/gpinpereira/Pyfit/archive/refs/tags/0.0.1.tar.gz
 Project-URL: Bug Tracker, https://https://github.com/gpinpereira/Pyfit/issues
 Description: # Pyfit
+        
+        ```
+        pip install ifitpy
+        ```
         
         This fit package permits to, well, fit a given x,y data. It encapsulates both iminuit and curve_fit.
         There are two type of functions. Simple (linear, expo) and Complex(gaussian, gaussian2d, poly).
@@ -21,7 +25,7 @@ Description: # Pyfit
         
         ### To extract the fit results use
         ```
-        from fitpy import Fitter
+        from ifitpy import Fitter
         f = Fitter("linear") #linear, expo, gaussian, gaussian2d, poly
         f.fit([0,10], [0,-10])
         p = f.getParams()
@@ -31,6 +35,7 @@ Description: # Pyfit
         print(p.b) # slope for the “intercept” type
         ```
         ### This an ongoing project!
+        
 Keywords: fitting,datascience,iminuit
 Platform: UNKNOWN
 Classifier: Development Status :: 3 - Alpha

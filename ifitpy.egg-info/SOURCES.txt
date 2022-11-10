@@ -2,6 +2,7 @@ README.md
 setup.cfg
 setup.py
 ifitpy/Fitter.py
+ifitpy/Histograms.py
 ifitpy/__init__.py
 ifitpy.egg-info/PKG-INFO
 ifitpy.egg-info/SOURCES.txt
