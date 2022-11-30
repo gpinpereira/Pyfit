@@ -4,7 +4,7 @@ import string
 from scipy import stats
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
-import ifitpy.Histograms as ht
+from . import Histograms as ht
 from scipy.interpolate import UnivariateSpline
 
 
@@ -170,6 +170,12 @@ class Fitter(object):
         self.profy = None
         self.profyrr = None
 
+        self.minuitactive=False
+
+    def disableMinuit(self):
+        self.minuitactive =False
+    def enableMinuit(self):
+        self.minuitactive = True
 
     def fitBinned(self, x, y=None, p0=None, bins=100, n=1):
         x, y = np.array(x), np.array(y)
@@ -256,7 +262,7 @@ class Fitter(object):
 
         pf2d = ht.Profile2D(binsx=400, binsy=400)
         pf2d.fill(x, y)
-        ah_R, bh_R, zh_R = pf2d.getBinsX(), pf2d.getBinsY(), pf2d.getCount()
+        ah_R, bh_R, zh_R, sigs = pf2d.getBinsX(), pf2d.getBinsY(), pf2d.getCount(), pf2d.getSigmas()
         
         def ngaussian2d(xy,*params): #x0, y0, sigma_x, sigma_y, amp, theta
 
@@ -279,7 +285,7 @@ class Fitter(object):
                 yg = y[tcut]
                 p0 += [np.average(xg),np.average(yg),np.std(xg),np.std(yg), zh_R.max()/n, -0.001]
 
-        par, cov = self.fitter(func=ngaussian2d,x=(ah_R,bh_R),y=zh_R,p0=p0)
+        par, cov = self.fitter(func=ngaussian2d,x=(ah_R,bh_R),y=zh_R, yerr=sigs,p0=p0)
 
         pars_dict = {}
         for i in range(0, len(p0),6):
@@ -355,21 +361,23 @@ class Fitter(object):
         yerr = np.array(yerr)
         if yerr.all() == None: yerr = np.array([1e-9]*y.shape[0]) 
 
-        if bounds == None:
-            par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 20000, xtol=1e-8)
+        if bounds == None or self.fittype == "gaussian2d":
+            if (self.fittype == "gaussian2d"):
+                yerr=None
+            par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 10000, xtol=1e-8)
         else:
-            par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 20000, xtol=1e-8, bounds=bounds)
+            par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 10000, xtol=1e-8, bounds=bounds)
         
-        ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)
-        m = Minuit(ls, *par)
-
-        m.migrad()  # finds minimum of least_squares function
-        m.hesse()   # accurately computes uncertainties
-        
-        names, par, cov = m.parameters, m.values, m.covariance 
+        if self.minuitactive:
+            ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)
+            m = Minuit(ls, *par)
+            m.migrad()  # finds minimum of least_squares function
+            m.hesse()   # accurately computes uncertainties
+            names, par, cov = m.parameters, m.values, m.covariance 
         vars = []
-        for i  in range(len(cov)):
+        for i  in range(len(par)):
             #print("c ", cov[i][i])
+            if cov is None:continue
             vars.append(cov[i][i]**0.5)
 
         self.err = vars

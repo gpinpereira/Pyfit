@@ -99,7 +99,6 @@ class Profile2D(object):
         sigma = stats.binned_statistic_2d(x, y, np.arange(len(x)), 'std', bins=bins, range=ra).statistic
         count = stats.binned_statistic_2d(x, y, np.arange(len(x)), "count", bins=bins, range=ra).statistic
         res = stats.binned_statistic_2d(x, y, np.arange(len(x)), "mean", bins=bins, range=ra)
-        
         xh, yh = (res.x_edge[:-1]+res.x_edge[1:])*0.5, (res.y_edge[:-1]+res.y_edge[1:])*0.5   
 
         xh, yh = np.meshgrid(xh, yh, indexing='ij')
