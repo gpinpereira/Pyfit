@@ -9,7 +9,7 @@ from scipy.interpolate import UnivariateSpline
 
 
 class Utils(object):
-    def __init__(self) -> None:
+    def __init__(self):
         pass
     @staticmethod
     def make_histogram(x,y,bins=400, noise_factor=0.0):
@@ -114,7 +114,7 @@ class Result(object):
 
 class Functions(object):
 
-    def __init__(self) -> None:
+    def __init__(self):
         pass
 
     @staticmethod
@@ -177,10 +177,11 @@ class Fitter(object):
     def enableMinuit(self):
         self.minuitactive = True
 
-    def fitBinned(self, x, y=None, p0=None, bins=100, n=1):
+    def fitBinned(self, x, y=np.array([]), p0=None, bins=100, n=1):
         x, y = np.array(x), np.array(y)
         prof = None
-        if y.all() == None:
+
+        if y.shape[0] == 0:
             prof = ht.Histogram(bins)
             prof.fill(x)
         else:
@@ -357,13 +358,18 @@ class Fitter(object):
         self.params = Result(pars_dict)
         self.func_out = multipoly
 
-    def fitter(self,func,x,y,yerr=None,p0=None, bounds=None):
-        yerr = np.array(yerr)
-        if yerr.all() == None: yerr = np.array([1e-9]*y.shape[0]) 
-
+    def fitter(self,func,x,y,yerr=np.array([]),p0=None, bounds=None):
+        
+        if isinstance(yerr, np.ndarray): 
+            if((yerr==None).all()):
+                yerr = np.array([1e-9] * y.shape[0])
+        elif yerr == None:
+            yerr = np.array([1e-9] * y.shape[0])
+        
         if bounds == None or self.fittype == "gaussian2d":
             if (self.fittype == "gaussian2d"):
                 yerr=None
+
             par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 10000, xtol=1e-8)
         else:
             par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 10000, xtol=1e-8, bounds=bounds)

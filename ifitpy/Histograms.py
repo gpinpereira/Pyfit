@@ -95,7 +95,7 @@ class Profile2D(object):
         bins = [self.binsx, self.binsy]
         ra = [[self.xmin, self.xmax], [self.ymin, self.ymax]]
 
-        if np.array(ra).any() == None: ra = None
+        if (np.array(ra)==None).any(): ra = None
         sigma = stats.binned_statistic_2d(x, y, np.arange(len(x)), 'std', bins=bins, range=ra).statistic
         count = stats.binned_statistic_2d(x, y, np.arange(len(x)), "count", bins=bins, range=ra).statistic
         res = stats.binned_statistic_2d(x, y, np.arange(len(x)), "mean", bins=bins, range=ra)
