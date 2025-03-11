@@ -1,27 +1,58 @@
 # Pyfit
+### This an ongoing project!
 
 ```
 pip install ifitpy
 ```
+# Fitter Package Instructions  
 
-This fit package permits to, well, fit a given x,y data. It encapsulates both iminuit and curve_fit.
-There are two type of functions. Simple (linear, expo) and Complex(gaussian, gaussian2d, poly).
-For Simple function `fit(x,y)` are `fit(x,y,p0)` are valid inputs. In the first option the fit attempts to estimate the initial starting point. In the second option, a list of parameters (p0) is used to initialized the fit.
-
-For Complex functions `fit(x,y, n)` are `fit(x,y,p0)` are valid inputs. If n is used, then the algorithm will use this value to generate the fitting function with n components. For example, `fit(xx,yy,n=3)` will fit a sum of two gaussian(2d) or a 3-degree polonimal function. And p0 zero is also estimated. If `fit(x,y,n,p0)` is used, then p0 will be the initialization parameters. Note that `len(p0) = n*parameters_to_fit`.
-
-There's also a `f.fitBinned(xx,yy,bins=50)` option which allows fitting a profile histogram instead of the raw data. This option is often faster and is the recommended one as it takes into account the statistical fluctuation of the data.
-Don't forget to check the Tutorial notebook.
-
-### To extract the fit results use
+## 1. Creating a Fitter Instance  
+```python
+f = Fitter("linear")  # Available types: "linear", "expo", "gaussian", "gaussian2d", "poly"
 ```
-from ifitpy import Fitter
-f = Fitter("linear") #linear, expo, gaussian, gaussian2d, poly
-f.fit([0,10], [0,-10])
+
+This package provides fitting capabilities for given `x, y` data, encapsulating both `iminuit` and `curve_fit`.  
+
+Functions are categorized as:  
+- **Simple**: `"linear"`, `"expo"`  
+- **Complex**: `"gaussian"`, `"gaussian2d"`, `"poly"`
+
+## 2. Performing a Fit  
+
+### Simple Functions (`linear`, `expo`)
+```python
+f.fit(x, y)  # Estimates initial parameters automatically  
+f.fit(x, y, p0)  # Uses provided initial parameters (p0)
+```
+
+### Complex Functions (`gaussian`, `gaussian2d`, `poly`)
+```python
+f.fit(x, y, n)  # Fits using `n` components (e.g., a sum of `n` Gaussians or an `n`-degree polynomial)  
+f.fit(x, y, p0)  # Uses provided initial parameters  
+f.fit(x, y, n, p0)  # Uses both `n` components and provided initialization parameters  
+```
+> **Note:** For `fit(x, y, n, p0)`, the length of `p0` must be `n * parameters_to_fit`.
+
+## 3. Binned Fitting  
+The `fitBinned` function allows fitting a profile histogram instead of raw data, which is often faster and accounts for statistical fluctuations.  
+```python
+f.fitBinned(x, y, bins=50)
+```
+
+## 4. Extracting Fit Results  
+```python
+f.fit([0, 10], [0, -10])
 p = f.getParams()
-print(p) # prints a string with the available variables.
-print(p.vars) # list of the results
-print(p.m) # slope for the “linear” type
-print(p.b) # slope for the “intercept” type
+
+print(p)         # Prints a summary of available variables  
+print(p.vars)    # List of fit results  
+print(p.m)       # Slope for the "linear" type  
+print(p.b)       # Intercept for the "linear" type  
 ```
-### This an ongoing project!
+
+## 5. Evaluating the Fitted Function  
+```python
+print(f.evaluate([20]))  # Evaluates the function at x = 20 (useful for plotting)
+```
+
+

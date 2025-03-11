@@ -11,18 +11,6 @@ from scipy.interpolate import UnivariateSpline
 class Utils(object):
     def __init__(self):
         pass
-    @staticmethod
-    def make_histogram(x,y,bins=400, noise_factor=0.0):
-        zh, edges = np.histogramdd(np.column_stack((x,y)), bins=bins, density=True)
-        indexes = np.where(zh == zh.max())
-        guess_x0, guess_y0, guess_amp = edges[0][indexes[0]][0], edges[1][indexes[1]][0], zh.max()
-        zh = zh.T
-        zh_R = zh.ravel()
-        xh, yh = np.meshgrid(edges[0][:-1], edges[1][:-1])
-        xh_R, yh_R = xh.ravel(), yh.ravel()
-        filt_index = np.where(zh_R <= (zh_R.max()-zh_R.min())*noise_factor) #0.18
-        zh_R[filt_index[0]] = 0
-        return xh_R, yh_R, zh_R, guess_x0, guess_y0, guess_amp
     
     @staticmethod
     def makeExpoParam(x1,y1,x2,y2):
@@ -30,32 +18,22 @@ class Utils(object):
         p0 = np.log(y2)-p1*x2
         return p0, p1
 
-    @staticmethod
-    def profile(x,y=None, bins=100):
-        y = np.array(y)
-        if y.all() == None:
-            yrr = stats.binned_statistic(range(len(x)), x, 'std', bins=bins).statistic
-            y, edge = np.histogram(x, density=False,bins=bins)
-            x = (edge[:-1]+edge[1:])*0.5   
-        else:
-            yrr = stats.binned_statistic(x, y, 'std', bins=bins).statistic
-            y, edge, _ = stats.binned_statistic(x, y, 'mean', bins=bins)
-            x = (edge[:-1]+edge[1:])*0.5  
-
-        return x,y,yrr
-
+    # Find roots where first derivative is zero, and second derivative is negative.
+    # Get n roots of the highest yy values 
+    # Used to estimate the initial means of the gaussian fit
     @staticmethod
     def get_xx_of_n_max(xx, yy, n):
-        # Find roots where first derivative is zero, and second derivative is negative.
-        # Get n roots of the highest yy values 
+        
 
         w=5 #moving average with a window of length
         ty=np.convolve(yy, np.ones(w), 'same') / w
 
+        #Make a spline and calculate its derivative roots (position of maximums and minimus)
         y_spl = UnivariateSpline(xx,ty,s=0,k=4)
         y_spl_1d = y_spl.derivative(n=1)
         roots =  y_spl_1d.roots()
 
+        #Make a second-derivative roots (position of maximums)
         y_spl_2d = y_spl.derivative(n=2)
         value_2d_at_root = y_spl_2d(roots)
         potencial_means = roots[(value_2d_at_root<0)]
@@ -64,54 +42,23 @@ class Utils(object):
         ind = np.argpartition(yy_roots_values, -n)[-n:]
         return potencial_means[ind]
 
-    @staticmethod
-    def profile2d(x,y, bins=80, density=True):
-        typ = "mean"
-        if density:
-            typ = "count"
 
-        binx = np.arange(x.min(),x.max(),bins)
-        biny = np.arange(y.min(),y.max(),bins)
-        
-        sigma = stats.binned_statistic_2d(x, y, np.arange(len(x)), 'std', bins=bins).statistic
-        res = stats.binned_statistic_2d(x, y, np.arange(len(x)), typ, bins=bins)
-
-        xh, yh = (res.x_edge[:-1]+res.x_edge[1:])*0.5, (res.y_edge[:-1]+res.y_edge[1:])*0.5   
-        xh, yh = np.meshgrid(xh, yh)
-        x, y = xh.ravel(), yh.ravel()
-        z = res.statistic.ravel()
-
-        z[np.isnan(z)] = 0
-        
-        x0,y0 = x[z==z.max()], y[z==z.max()] 
-        return x,y,z,x0,sigma
-
-    @staticmethod
-    def fit_gaussian(a,b):
-        #fil_good_events = np.column_stack((a,b))
-        #zh, edges = np.histogramdd(fil_good_events, bins=400,density=True)
-        #indexes = np.where(zh == zh.max())
-        #guess_x0, guess_y0, guess_amp = edges[0][indexes[0]][0], edges[1][indexes[1]][0], zh.max()
-
-        ah_R, bh_R, zh_R, guess_x0, guess_y0, guess_amp = Utils.make_histogram(a,b,bins=200)
-        p = [guess_x0, guess_y0, 100, 30000, guess_amp,-1.e-3]
-
-        popt, pcov = curve_fit(Functions.gaussian_2d, xdata=(ah_R,bh_R),ydata=zh_R, p0=p, maxfev = 2000, xtol=1e-10)
-        return popt, pcov
-
-
+#Result class to generate named-values that can get used after a fit 
+#outputs: 
+#    vars: [np.float64(3346), np.float64(49), np.float64(10)], amp: 3346, mean: 49, sigma: 10
 class Result(object):
-    def __init__(self,dict, identity=""):
+    def __init__(self, dict, identity=""):
         self.vars = []
         for varname in dict:
             setattr(self, varname, dict[varname])
             self.vars.append(dict[varname])
+            
     def __str__(self):
         out= ", ".join([key + ": "+ str(self.__dict__[key]) for key in self.__dict__.keys()])
         return out
-    def r(self):
-        return self.vars
 
+
+#Prepares pre-defined functions for fitting
 class Functions(object):
 
     def __init__(self):
@@ -134,11 +81,11 @@ class Functions(object):
         return amp * np.exp(-t*t*0.5)
 
     @staticmethod
-    def expo(x,p0,p1):
+    def expo(x, p0, p1):
         return np.exp(p0+p1*x)
 
     @staticmethod
-    def lin(x,m,b):
+    def lin(x, m, b):
         return x*m+b
 
 
@@ -146,12 +93,13 @@ class Fitter(object):
 
     def __init__(self, fittype, *args):
         
-        self.func = None
-        self.params = None
-        self.err = None
-        self.par = None
-        self.chi2 = None
-        self.dof = None
+        self.func = None # based function for fitting
+        self.params = None # Results after fitting
+        self.err = None # errors of each parameter found in the fit
+        self.par = None # list with paramater. Mainly used for internal evaluation
+        self.p0 = None # list with paramater. Mainly used for internal evaluation
+        self.chi2 = None # chi2 of the fit
+        self.dof = None # degrees of the fit
         self.fittype = fittype
         if fittype == "linear":
             self.func = Functions.lin
@@ -163,13 +111,16 @@ class Fitter(object):
             self.func = Functions.expo
         elif fittype == "poly":
             self.func = Functions.lin
-        self.ident = ",".join(self.func.__code__.co_varnames[:self.func.__code__.co_argcount])
-        self.func_out = self.func
-        self.binned = False
+        self.ident = ",".join(self.func.__code__.co_varnames[:self.func.__code__.co_argcount]) # to print the arguments of the fittin function (x,amp,mean,sigma in case of Gaussian)
+        self.func_out = self.func # actuall fitting function, which sometimes can be a sum of self.func
+        self.binned = False # wether to bin data or not
+
+        #information for the profile histogram
         self.profx = None
         self.profy = None
         self.profyrr = None
 
+        #to wether use minuit or not
         self.minuitactive=False
 
     def disableMinuit(self):
@@ -177,6 +128,7 @@ class Fitter(object):
     def enableMinuit(self):
         self.minuitactive = True
 
+    # Makes histograms from raw data 
     def fitBinned(self, x, y=np.array([]), p0=None, bins=100, n=1):
         x, y = np.array(x), np.array(y)
         prof = None
@@ -209,37 +161,47 @@ class Fitter(object):
         elif self.fittype == "poly":
             self.fitPoly(x,y,p0) 
 
-    def getParams(self):
-        return self.params
-
-    def getErrors(self):
-        return self.err
-    
-    def function(self):
-        return self.func_out
-
+    #x, y and yerr are ordered
     def fitGauss(self, x, y=None, yerr=None, p0=None,n=1):
 
+        #prepare a function that is represented by the sum of n gaussians
         def ngaussianfit(x, *params): #amp_l, mean_l, sigma_l
             y = np.zeros_like(x)
             for i in range(0, len(params), 3):
                 y += self.func(x, params[i], params[i+1], params[i+2])
             return y 
 
+        # in case of using n paramters to define the number of gaussians 
+        # estimate initial paramters 
         if not hasattr(p0, '__len__'): #is not a list, tuple etc... means that we're fitting n gaussians. Where n=p0
             if p0==None: p0=1
 
-            xt = np.array_split(x, n) # np.array_split(np.linspace(x.min(),x.max(), n*10), n)
-            yt = np.array_split(y, n) # np.array_split(np.linspace(y.min(),y.max(), n*10), n)
+            xt = np.array_split(x, n) 
+            yt = np.array_split(y, n) 
 
+            # calculated means based on splines. 
+            # The output doe snto exists necessarly in x
             means = np.sort(Utils.get_xx_of_n_max(x,y,n))
+
             p0 = []
             for s in range(0,n):
+                shifted = x-means[s]
+                shifted_mod = np.abs(shifted) # nearest value of zero is the position of the mean
+                true_mean = x[shifted_mod==shifted_mod.min()][0]
+                estimated_amp = y[shifted_mod==shifted_mod.min()][0]
 
+                selL = (shifted<0) & (y<estimated_amp*0.5)
+                selR = (shifted>0) & (y<estimated_amp*0.5)
+                xl =  (x[selR].min() - x[selL].max())/2.3548 # calculate std from fwhm
+                #print("mean: ", true_mean, means[s])
+                
                 xg = xt[s]
                 yg = yt[s]
-                p0 += [np.max(yg),means[s],np.std(xg)]
+                #print("amp: ", estimated_amp, np.max(yg))
+                #print("sigma: ", xl, np.std(xg))
+                p0 += [estimated_amp , true_mean, xl]
 
+        #prepare parameters boundaries 
         bounds_hi = []
         bounds_lo = []
         for i in range(0,n):
@@ -247,6 +209,7 @@ class Fitter(object):
             bounds_hi += [np.inf,np.inf,np.inf]
         par, cov = self.fitter(ngaussianfit, x, y, yerr, p0=p0,bounds=(bounds_lo, bounds_hi))
 
+        #prepare named values
         pars_dict = {}
         if len(par)<=3:
             pars_dict = {"amp":par[0],"mean":par[1], "sigma":par[2]} 
@@ -360,6 +323,7 @@ class Fitter(object):
 
     def fitter(self,func,x,y,yerr=np.array([]),p0=None, bounds=None):
         
+        self.p0 = p0
         if isinstance(yerr, np.ndarray): 
             if((yerr==None).all()):
                 yerr = np.array([1e-9] * y.shape[0])
@@ -392,6 +356,19 @@ class Fitter(object):
         self.dof = 10 #len(x) - m.nfit
         return par, cov
 
+
+    def getParams(self):
+        return self.params
+
+    def getInitParams(self):
+        return self.p0
+
+    def getErrors(self):
+        return self.err
+    
+    def function(self):
+        return self.func_out
+    
     def evaluate(self, xx,yy=None):
         
         try:
