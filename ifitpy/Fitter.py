@@ -2,8 +2,6 @@ import numpy as np
 from scipy.optimize import curve_fit
 import string
 from scipy import stats
-from iminuit import Minuit
-from iminuit.cost import LeastSquares
 from . import Histograms as ht
 from scipy.interpolate import UnivariateSpline
 
@@ -116,14 +114,6 @@ class Fitter(object):
         self.profx = None
         self.profy = None
         self.profyrr = None
-
-        #to wether use minuit or not
-        self.minuitactive=False
-
-    def disableMinuit(self):
-        self.minuitactive =False
-    def enableMinuit(self):
-        self.minuitactive = True
 
     # Makes fit with internal histograms from raw data 
     def fitBinned(self, x, y=np.array([]), p0=None, bins=100, n=1):
@@ -322,12 +312,6 @@ class Fitter(object):
         else:
             par, cov = curve_fit(func, x, y, sigma=yerr, p0=p0, maxfev = 10000, xtol=1e-8, bounds=bounds)
         
-        if self.minuitactive:
-            ls = LeastSquares(x=x, y=y, yerror=yerr, model=func)
-            m = Minuit(ls, *par)
-            m.migrad()  # finds minimum of least_squares function
-            m.hesse()   # accurately computes uncertainties
-            names, par, cov = m.parameters, m.values, m.covariance 
         vars = []
         for i  in range(len(par)):
             #print("c ", cov[i][i])
