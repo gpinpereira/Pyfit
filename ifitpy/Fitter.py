@@ -194,14 +194,11 @@ class Fitter(object):
                 
                 xg = xt[s]
                 yg = yt[s]
-                #print("amp: ", estimated_amp, np.max(yg))
-                #print("sigma: ", xl, np.std(xg))
                 p0 += [estimated_amp , true_mean, xl]
 
         #prepare parameters boundaries 
         bounds_lo = [0,-np.inf,0]*n
         bounds_hi = [np.inf,np.inf,np.inf]*n
-
 
         varnames = []
 
