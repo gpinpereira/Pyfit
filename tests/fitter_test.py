@@ -56,7 +56,7 @@ class TestFitter(unittest.TestCase):
         p = f.getParams()
 
         # No direct parameter checks, but ensure fit succeeds
-        self.assertAlmostEqual(p.p0, self.expo_p0+10, places=PLACES)  # Check slope
+        self.assertAlmostEqual(p.p0, self.expo_p0, places=PLACES)  # Check slope
         self.assertAlmostEqual(p.p1, self.expo_p1, places=2)  # Check intercept
 
 
