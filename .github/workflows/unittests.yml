@@ -2,6 +2,9 @@ name: Run Unit Tests
 
 on:
   workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
+  push:
+    branches:
+      - python38_315_patch
 
 jobs:
   test:
