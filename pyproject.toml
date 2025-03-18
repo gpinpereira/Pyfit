@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ifitpy"
-version = "0.0.7"
+version = "0.0.8"
 description = "Simple data fitting package"
 readme = "README.md"
 authors = [
