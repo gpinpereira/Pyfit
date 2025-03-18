@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ifitpy"
+version = "0.0.7"
+description = "Simple data fitting package"
+readme = "README.md"
+authors = [
+    { name = "Guilherme Pereira", email = "guipinper@gmail.com" }
+]
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "scipy"
+]
+keywords = ["fitting", "datascience", "iminuit"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Documentation",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/gpinpereira/Pyfit"
+"Bug Tracker" = "https://github.com/gpinpereira/Pyfit/issues"
+
+[tool.setuptools]
+packages = ["ifitpy"]
